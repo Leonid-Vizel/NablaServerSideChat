@@ -1,0 +1,65 @@
+﻿@page "/Chat/{ChatId:int}"
+@rendermode InteractiveServer
+@inject IGlobalChatSyncronizer globalSyncronizer
+@inject IChatStorage storage
+@implements IDisposable
+
+@if (Loading)
+{
+    <span>Loading...</span>
+}
+
+@foreach (var message in Messages)
+{
+    <strong>[@message.Time.ToString("dd.MM.yyyy HH:mm:ss")] Юзверь @message.UserId:</strong>
+    <p>@message.Message</p>
+}
+
+<div class="mb-1">
+    <label class="form-label">Сообщение</label>
+    <textarea class="form-control form-control-sm" @bind="Message"></textarea>
+</div>
+
+<button class="btn btn-sm btn-success w-100" @onclick="HandleSendMessage">Отправить</button>
+
+@code {
+    [Parameter]
+    public int ChatId { get; set; }
+    public int UserId { get; set; }
+    public string? Message { get; set; }
+    public bool Loading { get; set; } = true;
+    public LocalChatSyncronizer Syncrionizer { get; set; } = null!;
+    public List<ChatMessage> Messages { get; set; } = [];
+
+    protected override Task OnParametersSetAsync()
+    {
+        UserId = Random.Shared.Next(int.MinValue, int.MaxValue);
+        Syncrionizer = globalSyncronizer.GetChatSyncronizer(ChatId);
+        Syncrionizer.OnMessageReceived += HandleMessageReceived;
+        Messages = storage.GetMessages(ChatId);
+        Loading = false;
+        return base.OnParametersSetAsync();
+    }
+
+    public async void HandleMessageReceived(ChatMessage message)
+    {
+        Messages.Add(message);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void HandleSendMessage()
+    {
+        if (Message == null)
+        {
+            return;
+        }
+        var message = new ChatMessage(ChatId, UserId, Message);
+        Syncrionizer.Send(message);
+    }
+
+    public void Dispose()
+    {
+        Syncrionizer.OnMessageReceived -= HandleMessageReceived;
+        Syncrionizer.NotifyClientUnlinked();
+    }
+}
